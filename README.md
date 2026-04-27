@@ -30,7 +30,14 @@ A Mastodon bot that brings Slack-style `/giphy` lookups to your instance. Mentio
 - A bot account on your Mastodon instance
 - A [Giphy API key](https://developers.giphy.com) (free tier)
 
-### 1. Clone and configure
+### 1. Follow each other
+
+For DMs to work, both accounts need to follow each other:
+
+1. Log in as your main account and follow the bot
+2. Log in as the bot account and follow your main account
+
+### 2. Clone and configure
 
 ```bash
 git clone https://github.com/vinzgreg/giphy-bot
@@ -50,7 +57,7 @@ Edit `.env` and fill in:
 | `GIPHY_API_KEY` | Your Giphy API key |
 | `BOT_VISIBILITY` | Visibility of posted GIFs: `unlisted` (default), `public`, or `private` |
 
-### 2. Add your own GIFs (optional)
+### 3. Add your own GIFs (optional)
 
 Drop `.gif` (or `.webp`, `.mp4`) files into the `local_gifs/` folder. Name them descriptively — the filename is used for fuzzy matching:
 
@@ -63,7 +70,7 @@ local_gifs/
 
 If `LOCAL_GIF_BASE_URL` is set in `.env`, GIFs are served from that URL. Otherwise the bot sends the local file path (useful for testing).
 
-### 3. Run
+### 4. Run
 
 ```bash
 docker compose up -d
