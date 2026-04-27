@@ -66,16 +66,26 @@ class GiphyBotListener(StreamListener):
         self._resp = responder
 
     def on_notification(self, notification):
+        logging.info("Notification received: type=%s", notification.get("type"))
         self._store.evict_expired()
         if notification.get("type") != "mention":
             return
         status = notification["status"]
+        logging.info("Mention from %s: %s", status["account"]["acct"],
+                     _clean(status.get("content", "")))
         if str(status["account"]["id"]) == str(config.bot_account_id):
+            logging.info("Ignoring self-mention")
             return
-        self._dispatch(status)
+        try:
+            self._dispatch(status)
+        except Exception:
+            logging.exception("Error handling mention")
 
     def on_abort(self, err):
         logging.error("Stream aborted: %s", err)
+
+    def on_error(self, err):
+        logging.error("Stream error: %s", err)
 
     def _dispatch(self, status: dict) -> None:
         acct = status["account"]["acct"]
