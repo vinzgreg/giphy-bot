@@ -32,6 +32,23 @@ def main():
     responder = Responder(mastodon)
     listener = GiphyBotListener(mastodon, store, responder)
 
+    # Verify credentials and check notification access
+    try:
+        me = mastodon.account_verify_credentials()
+        logging.info("Logged in as @%s (id=%s)", me["acct"], me["id"])
+    except Exception as e:
+        logging.error("Failed to verify credentials: %s", e)
+        return
+
+    try:
+        notifications = mastodon.notifications(limit=5)
+        logging.info("Recent notifications count: %d", len(notifications))
+        for n in notifications:
+            logging.info("  - type=%s from=%s", n["type"],
+                         n.get("account", {}).get("acct", "?"))
+    except Exception as e:
+        logging.error("Failed to fetch notifications (check token scopes): %s", e)
+
     logging.info("Starting Mastodon Giphy Bot...")
     handle = mastodon.stream_user(
         listener,
