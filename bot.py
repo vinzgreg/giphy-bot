@@ -49,25 +49,34 @@ def main():
     except Exception as e:
         logging.error("Failed to fetch notifications (check token scopes): %s", e)
 
-    logging.info("Starting Mastodon Giphy Bot...")
-    handle = mastodon.stream_user(
-        listener,
-        run_async=True,
-        reconnect_async=True,
-        reconnect_async_wait_sec=10,
-    )
+    # Start from the most recent notification so we don't replay old ones
+    try:
+        recent = mastodon.notifications(limit=1)
+        since_id = recent[0]["id"] if recent else None
+    except Exception:
+        since_id = None
 
     def _shutdown(sig, frame):
         logging.info("Shutting down...")
-        handle.close()
         raise SystemExit(0)
 
     signal.signal(signal.SIGINT, _shutdown)
     signal.signal(signal.SIGTERM, _shutdown)
 
-    logging.info("Bot running. Listening for /giphy mentions...")
-    while handle.is_alive():
-        time.sleep(5)
+    logging.info("Bot running. Polling for mentions every 10 seconds...")
+    while True:
+        time.sleep(10)
+        try:
+            kwargs = {"limit": 20}
+            if since_id:
+                kwargs["since_id"] = since_id
+            new_notifications = mastodon.notifications(**kwargs)
+            if new_notifications:
+                since_id = new_notifications[0]["id"]
+                for notification in reversed(new_notifications):
+                    listener.on_notification(notification)
+        except Exception as e:
+            logging.error("Polling error: %s", e)
 
 
 if __name__ == "__main__":
