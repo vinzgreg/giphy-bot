@@ -16,13 +16,16 @@ except ImportError:
         pass
 
 
+_MENTION_SPAN_RE = re.compile(r'<span class="h-card">.*?</span>', re.DOTALL)
 _TAG_RE = re.compile(r"<[^>]+>")
-_MENTION_RE = re.compile(r"@\S+\s*")
+_AT_RE = re.compile(r"@\s*\S+")  # catches any leftover @ fragments after tag stripping
 
 
 def _clean(text: str) -> str:
-    without_tags = html.unescape(_TAG_RE.sub(" ", text)).strip()
-    return _MENTION_RE.sub("", without_tags).strip()
+    without_mentions = _MENTION_SPAN_RE.sub("", text)
+    without_tags = html.unescape(_TAG_RE.sub(" ", without_mentions))
+    without_ats = _AT_RE.sub("", without_tags)
+    return " ".join(without_ats.split())
 
 
 def _parse_command(text: str) -> tuple[str, str]:
