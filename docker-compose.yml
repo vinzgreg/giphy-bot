@@ -1,0 +1,8 @@
+services:
+  giphy-bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./local_gifs:/app/local_gifs
+      - ./blocked.json:/app/blocked.json

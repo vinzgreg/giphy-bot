@@ -1,0 +1,13 @@
+# credentials — never commit
+.env
+
+# personal GIF collection
+local_gifs/*
+!local_gifs/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/

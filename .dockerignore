@@ -1,0 +1,7 @@
+.env
+.env.example
+.git
+__pycache__
+*.pyc
+blocked.json
+local_gifs/
