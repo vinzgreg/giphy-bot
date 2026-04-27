@@ -4,23 +4,23 @@ A Mastodon bot that brings Slack-style `/giphy` lookups to your instance. Mentio
 
 ## Features
 
-- `/giphy <keyword>` — search Giphy and receive options via DM
-- `/giphy shuffle` — post a random GIF immediately (no selection loop)
-- Navigate results with `next`, pick with `send N`, or type a new keyword
+- Mention the bot with a keyword — search Giphy and receive options via DM
+- `shuffle` — post a random GIF immediately (no selection loop)
+- Navigate results with `next`, pick with `send N`, or mention the bot with a new keyword
 - `block` — permanently ban a GIF from ever appearing again
 - Local GIF library — drop your own GIFs in `local_gifs/`, they are fuzzy-matched and shown first when relevant
 - Runs as a Docker container with auto-restart
 
 ## How it works
 
-1. You post a toot mentioning the bot: `/giphy excited dog`
+1. You mention the bot with a keyword: `@giphybot excited dog`
 2. The bot DMs you a numbered list of GIFs (local matches first, then Giphy results)
-3. You reply to the DM:
+3. You reply:
    - `send 2` — posts GIF #2 as an unlisted reply to your original toot
    - `next` — fetches the next batch of results
    - `block` — permanently bans the current GIF, shows the next one
    - `cancel` — ends the session
-   - Any other text — treated as a new search keyword
+   - Mention the bot with new text — searches a new keyword
 
 ## Setup
 
