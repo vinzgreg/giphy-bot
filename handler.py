@@ -17,22 +17,20 @@ except ImportError:
 
 
 _TAG_RE = re.compile(r"<[^>]+>")
+_MENTION_RE = re.compile(r"@\S+\s*")
 
 
 def _clean(text: str) -> str:
-    return html.unescape(_TAG_RE.sub(" ", text)).strip()
+    without_tags = html.unescape(_TAG_RE.sub(" ", text)).strip()
+    return _MENTION_RE.sub("", without_tags).strip()
 
 
 def _parse_command(text: str) -> tuple[str, str]:
     clean = " ".join(text.split())
     low = clean.lower()
 
-    if low.startswith("/giphy"):
-        arg = clean[6:].strip()
-        if not arg or arg.lower() == "shuffle":
-            return ("shuffle", "")
-        return ("search", arg)
-
+    if low in ("shuffle", "random"):
+        return ("shuffle", "")
     if low == "next":
         return ("next", "")
     if low == "cancel":
@@ -42,8 +40,10 @@ def _parse_command(text: str) -> tuple[str, str]:
     m = re.match(r"^send(?:\s+(\d+))?$", low)
     if m:
         return ("send", m.group(1) or "1")
+    if not clean:
+        return ("empty", "")
 
-    return ("new_keyword", clean)
+    return ("search", clean)
 
 
 def _combined_search(keyword: str) -> list:
@@ -90,8 +90,10 @@ class GiphyBotListener(StreamListener):
             self._new_search(toot_id, acct, arg)
         elif cmd == "shuffle":
             self._shuffle(toot_id, acct)
-        elif cmd in ("next", "send", "block", "cancel", "new_keyword"):
-            self._resp.error(acct, toot_id, "No active GIF session. Start one with /giphy <keyword>")
+        elif cmd == "empty":
+            self._resp.error(acct, toot_id, "Mention me with a keyword to search for a GIF, or 'shuffle' for a random one.")
+        elif cmd in ("next", "send", "block", "cancel"):
+            self._resp.error(acct, toot_id, "No active GIF session. Mention me with a keyword to start one.")
         else:
             pass
 
@@ -102,7 +104,7 @@ class GiphyBotListener(StreamListener):
             return
         results = _combined_search(keyword)
         if not results:
-            self._resp.error(acct, toot_id, f"No GIFs found for \"{keyword}\". Try another keyword?")
+            self._resp.error(acct, toot_id, f"No GIFs found for \"{keyword}\". Try a different keyword?")
             return
         self._store.record_trigger(acct)
         session = self._store.create(toot_id, acct, keyword, results, config.bot_visibility)
@@ -175,7 +177,7 @@ class GiphyBotListener(StreamListener):
                 self._resp.gif_list(acct, toot_id, session.keyword,
                                     page_results, offset=session.result_index)
 
-        elif cmd == "new_keyword":
+        elif cmd == "search":
             keyword = arg
             results = _combined_search(keyword)
             if not results:
