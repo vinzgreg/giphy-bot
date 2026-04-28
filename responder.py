@@ -30,18 +30,21 @@ class Responder:
 
     def post_gif(self, to_acct: str, in_reply_to_id: str,
                  gif: GifResult, visibility: str) -> Optional[str]:
+        # NOTE: in_reply_to_id is intentionally ignored for the GIF post.
+        # Mastodon restricts boost visibility for replies and for posts
+        # starting with @mentions to mutual followers of both accounts.
+        # Posting as a standalone toot with the mention at the end keeps
+        # attribution visible while letting boosts reach normal audiences.
         label = "🏠" if gif.is_local else "🌐"
         if gif.is_local and gif.local_path:
-            text = f"@{to_acct} {label} {gif.title}"
+            text = f"{label} {gif.title}\nvia @{to_acct}"
             media_id = self._upload_media(gif.local_path, gif.title)
             if media_id is None:
                 return None
-            return self._guarded_post(text, in_reply_to_id=in_reply_to_id,
-                                       visibility=visibility,
+            return self._guarded_post(text, visibility=visibility,
                                        media_ids=[media_id])
-        text = f"@{to_acct} {label} {gif.title}\n{gif.url}"
-        return self._guarded_post(text, in_reply_to_id=in_reply_to_id,
-                                   visibility=visibility)
+        text = f"{label} {gif.title}\n{gif.url}\nvia @{to_acct}"
+        return self._guarded_post(text, visibility=visibility)
 
     def _upload_media(self, path: str, description: str) -> Optional[str]:
         try:
