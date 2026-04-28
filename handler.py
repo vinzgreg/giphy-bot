@@ -84,6 +84,8 @@ class GiphyBotListener(StreamListener):
         cmd, arg = parse_command(text)
 
         session = self._store.find_by_reply(in_reply_to) if in_reply_to else None
+        logging.info("dispatch: cmd=%s in_reply_to=%r session=%s",
+                     cmd, in_reply_to, session.session_id if session else None)
 
         if session:
             self._store.touch(session)
@@ -106,6 +108,8 @@ class GiphyBotListener(StreamListener):
             return
         session = self._store.create(toot_id, acct, keyword, results, config.bot_visibility)
         new_id = self._resp.gif_list(acct, toot_id, keyword, results[:config.giphy_result_count])
+        logging.info("session=%s gif_list dm_id=%r linked=%s",
+                     session.session_id, new_id, bool(new_id))
         self._store.link_reply(session.session_id, new_id)
 
     def _shuffle(self, toot_id: str, acct: str) -> None:
