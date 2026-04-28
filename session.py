@@ -29,13 +29,33 @@ class GiphySession:
 class SessionStore:
     def __init__(self):
         self._sessions: dict[str, GiphySession] = {}
+        # Maps any toot/DM ID in the conversation thread to its session_id.
+        # When the bot DMs back, the new ID gets linked here so user replies
+        # to the bot's DMs can find the session.
+        self._reply_index: dict[str, str] = {}
         self._rate_limits: dict[str, float] = {}
 
     def get(self, session_id: str) -> Optional[GiphySession]:
         return self._sessions.get(session_id)
 
     def find_by_reply(self, in_reply_to_id: str) -> Optional[GiphySession]:
-        return self._sessions.get(in_reply_to_id)
+        if not in_reply_to_id:
+            return None
+        # Direct hit: reply was to the original toot
+        session = self._sessions.get(in_reply_to_id)
+        if session:
+            return session
+        # Indirect: reply was to one of the bot's DMs in the thread
+        sid = self._reply_index.get(in_reply_to_id)
+        if sid:
+            return self._sessions.get(sid)
+        return None
+
+    def link_reply(self, session_id: str, new_toot_id: str) -> None:
+        """Register a new bot-sent toot ID as belonging to this session."""
+        if not new_toot_id or session_id not in self._sessions:
+            return
+        self._reply_index[new_toot_id] = session_id
 
     def create(self, session_id: str, user_acct: str, keyword: str,
                results: list, visibility: str) -> GiphySession:
@@ -58,6 +78,10 @@ class SessionStore:
 
     def delete(self, session_id: str) -> None:
         self._sessions.pop(session_id, None)
+        # Clean up reply index entries pointing at this session
+        stale = [k for k, v in self._reply_index.items() if v == session_id]
+        for k in stale:
+            del self._reply_index[k]
 
     def evict_expired(self) -> None:
         now = time.monotonic()
@@ -65,7 +89,7 @@ class SessionStore:
         expired = [sid for sid, s in self._sessions.items()
                    if now - s.last_activity > ttl]
         for sid in expired:
-            del self._sessions[sid]
+            self.delete(sid)
 
     def check_rate_limit(self, user_acct: str) -> Optional[int]:
         """Return seconds remaining if rate-limited, else None."""

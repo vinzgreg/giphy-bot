@@ -59,14 +59,20 @@ def test_parse_send_default_index():
 
 def test_parse_send_with_index():
     assert parse_command("send 3") == ("send", "3")
+    assert parse_command("Send 3") == ("send", "3")
+    assert parse_command("SEND 3") == ("send", "3")
 
 
 def test_parse_block():
     assert parse_command("block") == ("block", "")
+    assert parse_command("BLOCK") == ("block", "")
+    assert parse_command("Block") == ("block", "")
 
 
 def test_parse_cancel():
     assert parse_command("cancel") == ("cancel", "")
+    assert parse_command("Cancel") == ("cancel", "")
+    assert parse_command("CANCEL") == ("cancel", "")
 
 
 def test_parse_empty():

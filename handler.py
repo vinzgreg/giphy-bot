@@ -100,19 +100,19 @@ class GiphyBotListener(StreamListener):
             pass
 
     def _new_search(self, toot_id: str, acct: str, keyword: str) -> None:
-        wait = self._store.check_rate_limit(acct)
-        if wait:
-            self._resp.error(acct, toot_id, f"Please wait {wait}s before requesting another GIF.")
-            return
         results = _combined_search(keyword)
         if not results:
             self._resp.error(acct, toot_id, f"No GIFs found for \"{keyword}\". Try a different keyword?")
             return
-        self._store.record_trigger(acct)
         session = self._store.create(toot_id, acct, keyword, results, config.bot_visibility)
-        self._resp.gif_list(acct, toot_id, keyword, results[:config.giphy_result_count])
+        new_id = self._resp.gif_list(acct, toot_id, keyword, results[:config.giphy_result_count])
+        self._store.link_reply(session.session_id, new_id)
 
     def _shuffle(self, toot_id: str, acct: str) -> None:
+        wait = self._store.check_rate_limit(acct)
+        if wait:
+            self._resp.error(acct, toot_id, f"Please wait {wait}s before posting another GIF.")
+            return
         try:
             gif = giphy.random_gif()
         except giphy.GiphyError:
@@ -121,7 +121,8 @@ class GiphyBotListener(StreamListener):
         if not gif:
             self._resp.error(acct, toot_id, "Couldn't fetch a random GIF right now.")
             return
-        self._resp.post_gif(acct, toot_id, gif, config.bot_visibility)
+        if self._resp.post_gif(acct, toot_id, gif, config.bot_visibility):
+            self._store.record_trigger(acct)
 
     def _handle_session_cmd(self, session: GiphySession, toot_id: str,
                              acct: str, cmd: str, arg: str) -> None:
@@ -132,16 +133,24 @@ class GiphyBotListener(StreamListener):
         elif cmd == "send":
             idx = int(arg) - 1
             if idx < 0 or idx >= len(session.results):
-                self._resp.error(acct, toot_id, f"No GIF #{idx + 1} in this list.")
+                new_id = self._resp.error(acct, toot_id, f"No GIF #{idx + 1} in this list.")
+                self._store.link_reply(session.session_id, new_id)
+                return
+            wait = self._store.check_rate_limit(acct)
+            if wait:
+                new_id = self._resp.error(acct, toot_id, f"Please wait {wait}s before posting another GIF.")
+                self._store.link_reply(session.session_id, new_id)
                 return
             gif = session.results[idx]
-            self._resp.post_gif(acct, session.session_id, gif, session.visibility)
-            self._store.delete(session.session_id)
+            if self._resp.post_gif(acct, session.session_id, gif, session.visibility):
+                self._store.record_trigger(acct)
+                self._store.delete(session.session_id)
 
         elif cmd == "block":
             current = session.results[session.result_index] if session.results else None
             if not current:
-                self._resp.error(acct, toot_id, "Nothing to block.")
+                new_id = self._resp.error(acct, toot_id, "Nothing to block.")
+                self._store.link_reply(session.session_id, new_id)
                 return
             if not current.is_local:
                 blocklist.block(current.id)
@@ -151,11 +160,13 @@ class GiphyBotListener(StreamListener):
                 more = _combined_search(session.keyword)
                 session.results = [r for r in more if r.id != current.id]
             if session.results:
-                self._resp.gif_list(
+                list_id = self._resp.gif_list(
                     acct, toot_id, session.keyword,
                     session.results[:config.giphy_result_count],
                 )
-                self._resp.dm(acct, toot_id, f"Blocked {'(local GIFs can only be deleted from disk)' if current.is_local else ''}. Here are your options:")
+                self._store.link_reply(session.session_id, list_id)
+                note_id = self._resp.dm(acct, toot_id, f"Blocked {'(local GIFs can only be deleted from disk)' if current.is_local else ''}. Here are your options:")
+                self._store.link_reply(session.session_id, note_id)
             else:
                 self._resp.error(acct, toot_id, "Blocked. No more GIFs found for this keyword.")
                 self._store.delete(session.session_id)
@@ -173,23 +184,28 @@ class GiphyBotListener(StreamListener):
                 page_results = session.results[session.result_index:
                                                session.result_index + config.giphy_result_count]
             if not page_results:
-                self._resp.error(acct, toot_id, "No more GIFs. Try a new keyword?")
+                new_id = self._resp.error(acct, toot_id, "No more GIFs. Try a new keyword?")
+                self._store.link_reply(session.session_id, new_id)
                 session.result_index = max(0, session.result_index - config.giphy_result_count)
             else:
-                self._resp.gif_list(acct, toot_id, session.keyword,
-                                    page_results, offset=session.result_index)
+                new_id = self._resp.gif_list(acct, toot_id, session.keyword,
+                                             page_results, offset=session.result_index)
+                self._store.link_reply(session.session_id, new_id)
 
         elif cmd == "search":
             keyword = arg
             results = _combined_search(keyword)
             if not results:
-                self._resp.error(acct, toot_id, f"No GIFs found for \"{keyword}\". Try another?")
+                new_id = self._resp.error(acct, toot_id, f"No GIFs found for \"{keyword}\". Try another?")
+                self._store.link_reply(session.session_id, new_id)
                 return
             session.keyword = keyword
             session.results = results
             session.result_index = 0
-            self._resp.gif_list(acct, toot_id, keyword, results[:config.giphy_result_count])
+            new_id = self._resp.gif_list(acct, toot_id, keyword, results[:config.giphy_result_count])
+            self._store.link_reply(session.session_id, new_id)
 
         else:
-            self._resp.error(acct, toot_id,
-                             "Unknown command. Reply: 'send N' · 'next' · 'block' · 'cancel' · or a new keyword.")
+            new_id = self._resp.error(acct, toot_id,
+                                      "Unknown command. Reply: 'send N' · 'next' · 'block' · 'cancel' · or a new keyword.")
+            self._store.link_reply(session.session_id, new_id)
