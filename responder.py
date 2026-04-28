@@ -9,6 +9,7 @@ from session import GifResult
 
 _MEDIA_PROCESSING_TIMEOUT_S = 30
 _MEDIA_PROCESSING_POLL_S = 1.0
+_MASTODON_MAX_ATTACHMENTS = 4
 
 
 class Responder:
@@ -98,16 +99,36 @@ class Responder:
 
     def gif_list(self, to_acct: str, in_reply_to_id: str,
                  keyword: str, gifs: list, offset: int = 0) -> Optional[str]:
+        # Local GIFs have no public URL, so attach them as media in the DM
+        # itself (Mastodon allows up to 4 attachments) so the user can preview
+        # what they're picking. Remote Giphy GIFs keep a clickable URL.
         lines = [f"GIFs for \"{keyword}\":"]
+        media_ids: list[str] = []
         for i, gif in enumerate(gifs, start=offset + 1):
             label = "🏠 (local)" if gif.is_local else "🌐"
-            lines.append(f"{i}. {gif.url}  {label} {gif.title}")
+            attached = False
+            if (gif.is_local and gif.local_path
+                    and len(media_ids) < _MASTODON_MAX_ATTACHMENTS):
+                mid = self._upload_media_file(gif.local_path, gif.title)
+                if mid:
+                    media_ids.append(mid)
+                    attached = True
+            if attached:
+                lines.append(f"{i}. {label} {gif.title}")
+            elif gif.is_local:
+                lines.append(f"{i}. {label} {gif.title} (preview unavailable)")
+            else:
+                lines.append(f"{i}. {gif.url}  {label} {gif.title}")
         lines.append("")
         lines.append(
             "Reply: 'send N' to post · 'next' for more · 'block' to ban this GIF "
             "· new keyword to search again · 'cancel' to quit"
         )
-        return self.dm(to_acct, in_reply_to_id, "\n".join(lines))
+        text = f"@{to_acct} " + "\n".join(lines)
+        kwargs: dict = {"in_reply_to_id": in_reply_to_id, "visibility": "direct"}
+        if media_ids:
+            kwargs["media_ids"] = media_ids
+        return self._guarded_post(text, **kwargs)
 
     def notify_admin(self, message: str) -> None:
         """Send a DM to the admin. Bypasses the circuit breaker so the admin
