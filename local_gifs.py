@@ -58,4 +58,5 @@ def _to_gif_result(path: Path) -> GifResult:
         url=url,
         page_url=url,
         is_local=True,
+        local_path=str(path.resolve()),
     )

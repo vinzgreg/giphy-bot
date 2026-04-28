@@ -12,6 +12,7 @@ class GifResult:
     url: str
     page_url: str
     is_local: bool = False
+    local_path: Optional[str] = None
 
 
 @dataclass

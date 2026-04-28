@@ -31,9 +31,25 @@ class Responder:
     def post_gif(self, to_acct: str, in_reply_to_id: str,
                  gif: GifResult, visibility: str) -> Optional[str]:
         label = "🏠" if gif.is_local else "🌐"
+        if gif.is_local and gif.local_path:
+            text = f"@{to_acct} {label} {gif.title}"
+            media_id = self._upload_media(gif.local_path, gif.title)
+            if media_id is None:
+                return None
+            return self._guarded_post(text, in_reply_to_id=in_reply_to_id,
+                                       visibility=visibility,
+                                       media_ids=[media_id])
         text = f"@{to_acct} {label} {gif.title}\n{gif.url}"
         return self._guarded_post(text, in_reply_to_id=in_reply_to_id,
                                    visibility=visibility)
+
+    def _upload_media(self, path: str, description: str) -> Optional[str]:
+        try:
+            media = self._m.media_post(path, description=description)
+            return str(media["id"])
+        except Exception:
+            logging.exception("Failed to upload local GIF: %s", path)
+            return None
 
     def error(self, to_acct: str, in_reply_to_id: str, message: str) -> Optional[str]:
         return self.dm(to_acct, in_reply_to_id, message)
