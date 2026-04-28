@@ -1,6 +1,6 @@
 # giphy-bot
 
-A Mastodon bot that brings Slack-style `/giphy` lookups to your instance. Mention the bot with `/giphy <keyword>` and it privately DMs you GIF options to pick from — nothing spams your followers until you choose to post.
+A Mastodon bot that brings Slack-style `/giphy` lookups to your instance. Mention the bot with a keyword and it privately DMs you GIF options to pick from — nothing spams your followers until you choose to post.
 
 ## Features
 
@@ -9,6 +9,9 @@ A Mastodon bot that brings Slack-style `/giphy` lookups to your instance. Mentio
 - Navigate results with `next`, pick with `send N`, or mention the bot with a new keyword
 - `block` — permanently ban a GIF from ever appearing again
 - Local GIF library — drop your own GIFs in `local_gifs/`, they are fuzzy-matched and shown first when relevant
+- **Auto follow-back** — anyone who follows the bot gets followed back automatically (so DMs work in both directions)
+- **Safety circuit breaker** — auto-pauses if the bot tries to post too many messages per minute, with admin DM notification
+- Configurable logging level, polling interval, rate limit, and cool-down
 - Runs as a Docker container with auto-restart
 
 ## How it works
@@ -32,10 +35,11 @@ A Mastodon bot that brings Slack-style `/giphy` lookups to your instance. Mentio
 
 ### 1. Follow each other
 
-For DMs to work, both accounts need to follow each other:
+For DMs to work, both accounts need to follow each other. The bot auto-follows back anyone who follows it (controlled by `AUTO_FOLLOW_BACK`), so you only need to:
 
-1. Log in as your main account and follow the bot
-2. Log in as the bot account and follow your main account
+- Log in as your main account and follow the bot
+
+The bot will follow you back automatically once it's running.
 
 ### 2. Clone and configure
 
@@ -81,13 +85,41 @@ docker compose logs -f
 
 All settings live in `.env`. See `.env.example` for the full list with defaults.
 
+### Bot behaviour
+
 | Variable | Default | Description |
 |---|---|---|
 | `GIPHY_RESULT_COUNT` | `3` | GIFs per batch |
 | `GIPHY_RATING` | `g` | Giphy content rating (`g`, `pg`, `pg-13`, `r`) |
 | `SESSION_TTL_SECONDS` | `600` | How long an inactive session stays open (seconds) |
-| `RATE_LIMIT_PER_USER_SECONDS` | `30` | Minimum gap between `/giphy` triggers per user |
+| `RATE_LIMIT_PER_USER_SECONDS` | `30` | Minimum gap between requests per user |
 | `FUZZY_MATCH_THRESHOLD` | `65` | Fuzzy match sensitivity for local GIFs (0–100, lower = fuzzier) |
+| `AUTO_FOLLOW_BACK` | `true` | If `true`, the bot follows back anyone who follows it (so DMs work both ways automatically) |
+
+### Logging & polling
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | One of `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `POLL_INTERVAL_SECONDS` | `10` | How often to check for new mentions |
+
+### Safety circuit breaker
+
+If the bot would post more than `MAX_MESSAGES_PER_MINUTE` messages in any rolling 60-second window, the breaker opens. All outgoing messages are dropped for `COOLDOWN_SECONDS`, and the admin (`ADMIN_ACCT`) gets a DM. After cool-down, the bot resumes and DMs the admin again.
+
+| Variable | Default | Description |
+|---|---|---|
+| `MAX_MESSAGES_PER_MINUTE` | `6` | Hard cap on outgoing messages per rolling minute |
+| `COOLDOWN_SECONDS` | `300` | How long to pause after the breaker trips |
+| `ADMIN_ACCT` | _(empty)_ | Your handle (without `@`) to receive breaker alerts. Leave blank to disable admin notifications. |
+
+## Development
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pytest
+```
 
 ## License
 

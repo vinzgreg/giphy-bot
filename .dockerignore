@@ -1,7 +1,13 @@
 .env
 .env.example
 .git
+.gitignore
+.venv/
 __pycache__
 *.pyc
 blocked.json
 local_gifs/
+tests/
+pytest.ini
+requirements-dev.txt
+README.md

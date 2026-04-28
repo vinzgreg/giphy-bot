@@ -1,11 +1,10 @@
-import html
 import logging
-import re
 
 import blocklist
 import giphy
 import local_gifs
 from config import config
+from parser import clean_content, parse_command
 from responder import Responder
 from session import GiphySession, SessionStore
 
@@ -14,39 +13,6 @@ try:
 except ImportError:
     class StreamListener:
         pass
-
-
-_MENTION_SPAN_RE = re.compile(r'<span class="h-card">.*?</span>', re.DOTALL)
-_TAG_RE = re.compile(r"<[^>]+>")
-_AT_RE = re.compile(r"@\s*\S+")  # catches any leftover @ fragments after tag stripping
-
-
-def _clean(text: str) -> str:
-    without_mentions = _MENTION_SPAN_RE.sub("", text)
-    without_tags = html.unescape(_TAG_RE.sub(" ", without_mentions))
-    without_ats = _AT_RE.sub("", without_tags)
-    return " ".join(without_ats.split())
-
-
-def _parse_command(text: str) -> tuple[str, str]:
-    clean = " ".join(text.split())
-    low = clean.lower()
-
-    if low in ("shuffle", "random"):
-        return ("shuffle", "")
-    if low == "next":
-        return ("next", "")
-    if low == "cancel":
-        return ("cancel", "")
-    if low == "block":
-        return ("block", "")
-    m = re.match(r"^send(?:\s+(\d+))?$", low)
-    if m:
-        return ("send", m.group(1) or "1")
-    if not clean:
-        return ("empty", "")
-
-    return ("search", clean)
 
 
 def _combined_search(keyword: str) -> list:
@@ -66,20 +32,43 @@ class GiphyBotListener(StreamListener):
         self._resp = responder
 
     def on_notification(self, notification):
-        logging.info("Notification received: type=%s", notification.get("type"))
+        ntype = notification.get("type")
+        logging.debug("Notification received: type=%s", ntype)
         self._store.evict_expired()
-        if notification.get("type") != "mention":
+
+        if ntype == "follow":
+            self._handle_follow(notification)
             return
+
+        if ntype != "mention":
+            return
+
         status = notification["status"]
-        logging.info("Mention from %s: %s", status["account"]["acct"],
-                     _clean(status.get("content", "")))
         if str(status["account"]["id"]) == str(config.bot_account_id):
-            logging.info("Ignoring self-mention")
+            logging.debug("Ignoring self-mention")
             return
+        logging.info("Mention from @%s: %s", status["account"]["acct"],
+                     clean_content(status.get("content", "")))
         try:
             self._dispatch(status)
         except Exception:
-            logging.exception("Error handling mention")
+            logging.exception("Error handling mention from @%s",
+                              status["account"]["acct"])
+
+    def _handle_follow(self, notification: dict) -> None:
+        if not config.auto_follow_back:
+            return
+        account = notification.get("account") or {}
+        account_id = account.get("id")
+        acct = account.get("acct", "?")
+        if not account_id:
+            logging.warning("Follow notification missing account id")
+            return
+        try:
+            self._m.account_follow(account_id)
+            logging.info("Followed back @%s (id=%s)", acct, account_id)
+        except Exception:
+            logging.exception("Failed to follow back @%s", acct)
 
     def on_abort(self, err):
         logging.error("Stream aborted: %s", err)
@@ -91,8 +80,8 @@ class GiphyBotListener(StreamListener):
         acct = status["account"]["acct"]
         toot_id = str(status["id"])
         in_reply_to = str(status.get("in_reply_to_id") or "")
-        text = _clean(status.get("content", ""))
-        cmd, arg = _parse_command(text)
+        text = clean_content(status.get("content", ""))
+        cmd, arg = parse_command(text)
 
         session = self._store.find_by_reply(in_reply_to) if in_reply_to else None
 
@@ -138,7 +127,7 @@ class GiphyBotListener(StreamListener):
                              acct: str, cmd: str, arg: str) -> None:
         if cmd == "cancel":
             self._store.delete(session.session_id)
-            self._resp.dm(acct, toot_id, "Cancelled. Start fresh with /giphy <keyword>.")
+            self._resp.dm(acct, toot_id, "Cancelled. Mention me with a keyword to start fresh.")
 
         elif cmd == "send":
             idx = int(arg) - 1
