@@ -1,10 +1,14 @@
 import logging
+import time
 from typing import Optional
 
 import requests
 
 from circuit_breaker import CircuitBreaker
 from session import GifResult
+
+_MEDIA_PROCESSING_TIMEOUT_S = 30
+_MEDIA_PROCESSING_POLL_S = 1.0
 
 
 class Responder:
@@ -51,7 +55,7 @@ class Responder:
     def _upload_media_file(self, path: str, description: str) -> Optional[str]:
         try:
             media = self._m.media_post(path, description=description)
-            return str(media["id"])
+            return self._wait_for_media(media)
         except Exception:
             logging.exception("Failed to upload local GIF: %s", path)
             return None
@@ -64,10 +68,30 @@ class Responder:
             media = self._m.media_post(
                 resp.content, mime_type=mime_type, description=description,
             )
-            return str(media["id"])
+            return self._wait_for_media(media)
         except Exception:
             logging.exception("Failed to upload remote GIF: %s", url)
             return None
+
+    def _wait_for_media(self, media: dict) -> Optional[str]:
+        """Mastodon processes uploaded media asynchronously. Poll until the
+        media reports a URL (processing complete) or we hit the timeout."""
+        media_id = str(media["id"])
+        if media.get("url"):
+            return media_id
+        deadline = time.monotonic() + _MEDIA_PROCESSING_TIMEOUT_S
+        while time.monotonic() < deadline:
+            time.sleep(_MEDIA_PROCESSING_POLL_S)
+            try:
+                current = self._m.media(media_id)
+            except Exception:
+                logging.exception("Failed to poll media %s", media_id)
+                return None
+            if current.get("url"):
+                return media_id
+        logging.error("Media %s did not finish processing within %ds",
+                      media_id, _MEDIA_PROCESSING_TIMEOUT_S)
+        return None
 
     def error(self, to_acct: str, in_reply_to_id: str, message: str) -> Optional[str]:
         return self.dm(to_acct, in_reply_to_id, message)
