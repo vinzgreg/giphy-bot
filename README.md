@@ -8,7 +8,8 @@ A Mastodon bot that brings Slack-style `/giphy` lookups to your instance. Mentio
 - `shuffle` — post a random GIF immediately (no selection loop)
 - Navigate results with `next`, pick with `send N`, or mention the bot with a new keyword
 - `block` — permanently ban a GIF from ever appearing again
-- Local GIF library — drop your own GIFs in `local_gifs/`, they are fuzzy-matched and shown first when relevant
+- Local GIF library — drop your own GIFs in `local_gifs/`, they are fuzzy-matched and shown first when relevant, with a preview DM'd to you before you pick
+- GIFs are uploaded as inline media attachments (play in the timeline, not just a link card)
 - **Auto follow-back** — anyone who follows the bot gets followed back automatically (so DMs work in both directions)
 - **Safety circuit breaker** — auto-pauses if the bot tries to post too many messages per minute, with admin DM notification
 - Configurable logging level, polling interval, rate limit, and cool-down
@@ -19,7 +20,7 @@ A Mastodon bot that brings Slack-style `/giphy` lookups to your instance. Mentio
 1. You mention the bot with a keyword: `@giphybot excited dog`
 2. The bot DMs you a numbered list of GIFs (local matches first, then Giphy results)
 3. You reply:
-   - `send 2` — posts GIF #2 as an unlisted reply to your original toot
+   - `send 2` — posts GIF #2 as a standalone toot with inline playback, attributed to you at the end (`via @you`)
    - `next` — fetches the next batch of results
    - `block` — permanently bans the current GIF, shows the next one
    - `cancel` — ends the session
