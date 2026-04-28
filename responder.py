@@ -1,6 +1,8 @@
 import logging
 from typing import Optional
 
+import requests
+
 from circuit_breaker import CircuitBreaker
 from session import GifResult
 
@@ -36,22 +38,35 @@ class Responder:
         # Posting as a standalone toot with the mention at the end keeps
         # attribution visible while letting boosts reach normal audiences.
         label = "🏠" if gif.is_local else "🌐"
+        text = f"{label} {gif.title}\nvia @{to_acct}"
         if gif.is_local and gif.local_path:
-            text = f"{label} {gif.title}\nvia @{to_acct}"
-            media_id = self._upload_media(gif.local_path, gif.title)
-            if media_id is None:
-                return None
-            return self._guarded_post(text, visibility=visibility,
-                                       media_ids=[media_id])
-        text = f"{label} {gif.title}\n{gif.url}\nvia @{to_acct}"
-        return self._guarded_post(text, visibility=visibility)
+            media_id = self._upload_media_file(gif.local_path, gif.title)
+        else:
+            media_id = self._upload_media_url(gif.url, gif.title)
+        if media_id is None:
+            return None
+        return self._guarded_post(text, visibility=visibility,
+                                   media_ids=[media_id])
 
-    def _upload_media(self, path: str, description: str) -> Optional[str]:
+    def _upload_media_file(self, path: str, description: str) -> Optional[str]:
         try:
             media = self._m.media_post(path, description=description)
             return str(media["id"])
         except Exception:
             logging.exception("Failed to upload local GIF: %s", path)
+            return None
+
+    def _upload_media_url(self, url: str, description: str) -> Optional[str]:
+        try:
+            resp = requests.get(url, timeout=15)
+            resp.raise_for_status()
+            mime_type = resp.headers.get("Content-Type", "image/gif").split(";")[0].strip()
+            media = self._m.media_post(
+                resp.content, mime_type=mime_type, description=description,
+            )
+            return str(media["id"])
+        except Exception:
+            logging.exception("Failed to upload remote GIF: %s", url)
             return None
 
     def error(self, to_acct: str, in_reply_to_id: str, message: str) -> Optional[str]:
