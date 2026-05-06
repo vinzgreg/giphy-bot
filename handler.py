@@ -92,10 +92,8 @@ class GiphyBotListener(StreamListener):
             self._handle_session_cmd(session, toot_id, acct, cmd, arg)
         elif cmd == "search":
             self._new_search(toot_id, acct, arg)
-        elif cmd == "shuffle":
-            self._shuffle(toot_id, acct)
-        elif cmd == "empty":
-            self._resp.error(acct, toot_id, "Mention me with a keyword to search for a GIF, or 'shuffle' for a random one.")
+        elif cmd == "random_local":
+            self._random_local(toot_id, acct)
         elif cmd in ("next", "send", "block", "cancel"):
             self._resp.error(acct, toot_id, "No active GIF session. Mention me with a keyword to start one.")
         else:
@@ -112,18 +110,14 @@ class GiphyBotListener(StreamListener):
                      session.session_id, new_id, bool(new_id))
         self._store.link_reply(session.session_id, new_id)
 
-    def _shuffle(self, toot_id: str, acct: str) -> None:
+    def _random_local(self, toot_id: str, acct: str) -> None:
         wait = self._store.check_rate_limit(acct)
         if wait:
             self._resp.error(acct, toot_id, f"Please wait {wait}s before posting another GIF.")
             return
-        try:
-            gif = giphy.random_gif()
-        except giphy.GiphyError:
-            self._resp.error(acct, toot_id, "Giphy is unavailable right now, sorry.")
-            return
+        gif = local_gifs.random_gif()
         if not gif:
-            self._resp.error(acct, toot_id, "Couldn't fetch a random GIF right now.")
+            self._resp.error(acct, toot_id, "No local GIF. Sorry")
             return
         if self._resp.post_gif(acct, toot_id, gif, config.bot_visibility):
             self._store.record_trigger(acct)

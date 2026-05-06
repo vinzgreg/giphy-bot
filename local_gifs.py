@@ -1,4 +1,5 @@
 import logging
+import random
 from pathlib import Path
 
 from thefuzz import process as fuzz_process
@@ -44,6 +45,13 @@ def search(keyword: str) -> list[GifResult]:
                 results.append(_to_gif_result(path))
                 break
     return results
+
+
+def random_gif() -> "GifResult | None":
+    if not _INDEX:
+        return None
+    _, path = random.choice(_INDEX)
+    return _to_gif_result(path)
 
 
 def _to_gif_result(path: Path) -> GifResult:

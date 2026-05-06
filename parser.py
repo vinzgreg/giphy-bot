@@ -27,10 +27,8 @@ def parse_command(text: str) -> tuple[str, str]:
     clean = " ".join(text.split())
     low = clean.lower()
 
-    if not clean:
-        return ("empty", "")
-    if low in ("shuffle", "random"):
-        return ("shuffle", "")
+    if not clean or low in ("random", "zufall", "shuffle"):
+        return ("random_local", "")
     if low == "next":
         return ("next", "")
     if low == "cancel":
