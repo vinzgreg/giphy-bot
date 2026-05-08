@@ -1,5 +1,8 @@
+import json
 import logging
+import mimetypes
 import random
+import subprocess
 from pathlib import Path
 
 from thefuzz import process as fuzz_process
@@ -9,6 +12,18 @@ from session import GifResult
 
 
 _INDEX: list[tuple[str, Path]] = []
+
+
+def _probe_audio(path: Path) -> bool:
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", str(path)],
+            capture_output=True, text=True, timeout=5,
+        )
+        streams = json.loads(result.stdout).get("streams", [])
+        return any(s.get("codec_type") == "audio" for s in streams)
+    except Exception:
+        return False
 
 
 def _stem_to_keywords(stem: str) -> str:
@@ -60,6 +75,8 @@ def _to_gif_result(path: Path) -> GifResult:
         url = f"{base_url}/{path.name}"
     else:
         url = path.resolve().as_uri()
+    mime_type, _ = mimetypes.guess_type(path.name)
+    is_video = (mime_type or "").startswith("video/")
     return GifResult(
         id=f"local:{path.stem}",
         title=_stem_to_keywords(path.stem).title(),
@@ -67,4 +84,6 @@ def _to_gif_result(path: Path) -> GifResult:
         page_url=url,
         is_local=True,
         local_path=str(path.resolve()),
+        mime_type=mime_type,
+        has_audio=_probe_audio(path) if is_video else False,
     )

@@ -8,8 +8,19 @@ from circuit_breaker import CircuitBreaker
 from session import GifResult
 
 _MEDIA_PROCESSING_TIMEOUT_S = 30
+_VIDEO_PROCESSING_TIMEOUT_S = 120
 _MEDIA_PROCESSING_POLL_S = 1.0
 _MASTODON_MAX_ATTACHMENTS = 4
+
+
+def _media_label(gif: GifResult) -> str:
+    is_video = (gif.mime_type or "").startswith("video/")
+    label = "🏠" if gif.is_local else "🌐"
+    if is_video:
+        label += "🎬"
+        if gif.has_audio:
+            label += "🔊"
+    return label
 
 
 class Responder:
@@ -42,10 +53,11 @@ class Responder:
         # starting with @mentions to mutual followers of both accounts.
         # Posting as a standalone toot with the mention at the end keeps
         # attribution visible while letting boosts reach normal audiences.
-        label = "🏠" if gif.is_local else "🌐"
+        label = _media_label(gif)
         text = f"{label} {gif.title}\nvia @{to_acct}"
         if gif.is_local and gif.local_path:
-            media_id = self._upload_media_file(gif.local_path, gif.title)
+            media_id = self._upload_media_file(gif.local_path, gif.title,
+                                               mime_type=gif.mime_type)
         else:
             media_id = self._upload_media_url(gif.url, gif.title)
         if media_id is None:
@@ -53,12 +65,19 @@ class Responder:
         return self._guarded_post(text, visibility=visibility,
                                    media_ids=[media_id])
 
-    def _upload_media_file(self, path: str, description: str) -> Optional[str]:
+    def _upload_media_file(self, path: str, description: str,
+                           mime_type: Optional[str] = None) -> Optional[str]:
         try:
-            media = self._m.media_post(path, description=description)
-            return self._wait_for_media(media)
+            kwargs: dict = {"description": description}
+            if mime_type:
+                kwargs["mime_type"] = mime_type
+            media = self._m.media_post(path, **kwargs)
+            timeout = (_VIDEO_PROCESSING_TIMEOUT_S
+                       if (mime_type or "").startswith("video/")
+                       else _MEDIA_PROCESSING_TIMEOUT_S)
+            return self._wait_for_media(media, timeout=timeout)
         except Exception:
-            logging.exception("Failed to upload local GIF: %s", path)
+            logging.exception("Failed to upload local media: %s", path)
             return None
 
     def _upload_media_url(self, url: str, description: str) -> Optional[str]:
@@ -74,13 +93,14 @@ class Responder:
             logging.exception("Failed to upload remote GIF: %s", url)
             return None
 
-    def _wait_for_media(self, media: dict) -> Optional[str]:
+    def _wait_for_media(self, media: dict,
+                        timeout: float = _MEDIA_PROCESSING_TIMEOUT_S) -> Optional[str]:
         """Mastodon processes uploaded media asynchronously. Poll until the
         media reports a URL (processing complete) or we hit the timeout."""
         media_id = str(media["id"])
         if media.get("url"):
             return media_id
-        deadline = time.monotonic() + _MEDIA_PROCESSING_TIMEOUT_S
+        deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             time.sleep(_MEDIA_PROCESSING_POLL_S)
             try:
@@ -91,7 +111,7 @@ class Responder:
             if current.get("url"):
                 return media_id
         logging.error("Media %s did not finish processing within %ds",
-                      media_id, _MEDIA_PROCESSING_TIMEOUT_S)
+                      media_id, timeout)
         return None
 
     def error(self, to_acct: str, in_reply_to_id: str, message: str) -> Optional[str]:
@@ -100,23 +120,27 @@ class Responder:
     def gif_list(self, to_acct: str, in_reply_to_id: str,
                  keyword: str, gifs: list, offset: int = 0) -> Optional[str]:
         # Local GIFs have no public URL, so attach them as media in the DM
-        # itself (Mastodon allows up to 4 attachments) so the user can preview
-        # what they're picking. Remote Giphy GIFs keep a clickable URL.
+        # itself (Mastodon allows up to 4 image attachments) so the user can
+        # preview what they're picking. Remote Giphy GIFs keep a clickable URL.
+        # mp4 files are never attached as previews: Mastodon rejects posts that
+        # mix video and image attachments, and allows only 1 video per post.
         lines = [f"GIFs for \"{keyword}\":"]
         media_ids: list[str] = []
         for i, gif in enumerate(gifs, start=offset + 1):
-            label = "🏠 (local)" if gif.is_local else "🌐"
+            label = _media_label(gif) + (" (local)" if gif.is_local else "")
+            is_video = (gif.mime_type or "").startswith("video/")
             attached = False
-            if (gif.is_local and gif.local_path
+            if (gif.is_local and gif.local_path and not is_video
                     and len(media_ids) < _MASTODON_MAX_ATTACHMENTS):
-                mid = self._upload_media_file(gif.local_path, gif.title)
+                mid = self._upload_media_file(gif.local_path, gif.title,
+                                              mime_type=gif.mime_type)
                 if mid:
                     media_ids.append(mid)
                     attached = True
             if attached:
                 lines.append(f"{i}. {label} {gif.title}")
             elif gif.is_local:
-                lines.append(f"{i}. {label} {gif.title} (preview unavailable)")
+                lines.append(f"{i}. {label} {gif.title}")
             else:
                 lines.append(f"{i}. {gif.url}  {label} {gif.title}")
         lines.append("")

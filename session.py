@@ -13,6 +13,8 @@ class GifResult:
     page_url: str
     is_local: bool = False
     local_path: Optional[str] = None
+    mime_type: Optional[str] = None
+    has_audio: bool = False
 
 
 @dataclass
